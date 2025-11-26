@@ -15,6 +15,11 @@ BIOME_TINTS: list[Color] = [
     (0, 25, 5),    # biome 1 slight green
     (0, 5, 30),    # biome 2 slight blue
 ]
+BIOME_BASE: list[Color] = [
+    (132, 102, 74),  # tierra
+    (90, 138, 82),   # pasto
+    (46, 160, 164),  # agua/humedo
+]
 
 
 def _clamp(value: float, low: float, high: float) -> float:
@@ -63,3 +68,13 @@ def color_for_humidity(value: float) -> Color:
 def blend_biome(base: Color, biome: int, strength: float = 0.18) -> Color:
     tint = BIOME_TINTS[biome % len(BIOME_TINTS)]
     return _lerp(base, tint, strength)
+
+
+def color_for_cell(biome: int, humidity: float) -> Color:
+    base = BIOME_BASE[biome % len(BIOME_BASE)]
+    light = _clamp(0.6 + humidity * 0.25, 0.5, 0.95)
+    return (
+        int(base[0] * light),
+        int(base[1] * light),
+        int(base[2] * light),
+    )

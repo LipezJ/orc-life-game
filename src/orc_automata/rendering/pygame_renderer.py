@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 from importlib import resources
 from pathlib import Path
 from typing import List, Optional
@@ -8,7 +9,7 @@ import pygame
 
 from ..config import SimulationSettings
 from ..simulation import Simulation
-from .colors import DEEP_BG, GRID, HUD, blend_biome, color_for_humidity, color_for_orc
+from .colors import DEEP_BG, GRID, HUD, blend_biome, color_for_cell, color_for_humidity, color_for_orc
 
 
 class PygameRenderer:
@@ -23,6 +24,7 @@ class PygameRenderer:
         pygame.display.set_caption("Orcos - Automata Celular")
         self.font = pygame.font.SysFont("consolas", 16)
         self.running = True
+        self._noise_rng = random.Random(42)
         self.sprites = self._load_sprites()
 
     def handle_events(self) -> dict:
@@ -60,6 +62,8 @@ class PygameRenderer:
             fallback = pygame.Surface((self.cell_size, self.cell_size), pygame.SRCALPHA)
             fallback.fill((200, 80, 80))
             sprites.append(fallback)
+        if len(sprites) >= 2:
+            sprites[1] = self._tint_sprite(sprites[1], (255, 240, 150))
         return sprites
 
     def _load_resource_sprite(self, filename: str) -> Optional[pygame.Surface]:
@@ -86,14 +90,16 @@ class PygameRenderer:
         frame_width = max(1, sprite.get_width() // frames)
         frame_rect = pygame.Rect(0, 0, frame_width, sprite.get_height())
         first_frame = sprite.subsurface(frame_rect).copy()
-        return pygame.transform.smoothscale(first_frame, (self.cell_size, self.cell_size))
+        size = max(1, int(self.cell_size * 1.3))
+        scaled = pygame.transform.smoothscale(first_frame, (size, size))
+        return scaled
 
     def _draw_environment(self, simulation: Simulation) -> None:
         for y in range(self.settings.grid_height):
             for x in range(self.settings.grid_width):
                 humidity = simulation.environment.humidity_at(x, y)
                 biome = simulation.environment.biome_at(x, y)
-                color = blend_biome(color_for_humidity(humidity), biome)
+                color = blend_biome(color_for_cell(biome, humidity), biome, strength=0.08)
                 rect = pygame.Rect(
                     x * self.cell_size,
                     y * self.cell_size,
@@ -101,6 +107,7 @@ class PygameRenderer:
                     self.cell_size,
                 )
                 self.screen.fill(color, rect)
+                self._draw_cell_noise(x, y, biome)
 
     def _draw_grid(self) -> None:
         for x in range(0, self.width_px, self.cell_size):
@@ -115,7 +122,11 @@ class PygameRenderer:
             pos = (x * self.cell_size + margin, y * self.cell_size + margin)
             sprite = self._sprite_for_orc(orc)
             if sprite is not None:
-                self.screen.blit(sprite, pos)
+                cell_surface = pygame.Surface((self.cell_size, self.cell_size), pygame.SRCALPHA)
+                rect = sprite.get_rect()
+                rect.center = (self.cell_size // 2, self.cell_size // 2)
+                cell_surface.blit(sprite, rect)
+                self.screen.blit(cell_surface, (x * self.cell_size, y * self.cell_size))
             else:
                 rect = pygame.Rect(
                     pos[0],
@@ -147,3 +158,24 @@ class PygameRenderer:
         if not self.sprites:
             return None
         return self.sprites[orc.kind % len(self.sprites)]
+
+    def _draw_cell_noise(self, x: int, y: int, biome: int) -> None:
+        rng = random.Random((x * 73856093) ^ (y * 19349663) ^ (biome * 83492791))
+        overlay = pygame.Surface((self.cell_size, self.cell_size), pygame.SRCALPHA)
+        blotches = rng.randint(3, 6)
+        for _ in range(blotches):
+            r = max(2, self.cell_size // 6 + rng.randint(-1, 1))
+            cx = rng.randint(r, self.cell_size - r)
+            cy = rng.randint(r, self.cell_size - r)
+            alpha = rng.randint(40, 70)
+            # Subtle darker blotches per biome.
+            blot_color = blend_biome(color_for_humidity(0.5), biome, strength=0.25)
+            color = (blot_color[0], blot_color[1], blot_color[2], alpha)
+            pygame.draw.circle(overlay, color, (cx, cy), r)
+        self.screen.blit(overlay, (x * self.cell_size, y * self.cell_size))
+
+    def _tint_sprite(self, sprite: pygame.Surface, rgb: tuple[int, int, int]) -> pygame.Surface:
+        tinted = sprite.copy()
+        tinted.fill(rgb + (0,), special_flags=pygame.BLEND_RGB_MULT)
+        tinted.fill((15, 12, 0, 0), special_flags=pygame.BLEND_RGB_ADD)
+        return tinted
