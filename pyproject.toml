@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "orc-automata"
+version = "0.1.0"
+description = "Cellular automata of evolving orcs with a pygame renderer."
+requires-python = ">=3.10"
+authors = [{ name = "Student" }]
+dependencies = [
+    "pygame>=2.6",
+]
+readme = "README.md"
+
+[project.scripts]
+orc-automata = "orc_automata.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+orc_automata = ["assets/*.png"]
