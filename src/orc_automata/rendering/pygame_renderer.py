@@ -11,6 +11,8 @@ from ..config import SimulationSettings
 from ..simulation import Simulation
 from .colors import DEEP_BG, GRID, HUD, blend_biome, color_for_cell, color_for_humidity, color_for_orc
 
+INFECTION_GLOW = (170, 90, 210, 80)
+
 
 class PygameRenderer:
     def __init__(self, settings: SimulationSettings) -> None:
@@ -116,25 +118,20 @@ class PygameRenderer:
             pygame.draw.line(self.screen, GRID, (0, y), (self.width_px, y), 1)
 
     def _draw_orcs(self, simulation: Simulation) -> None:
-        margin = 0
         for orc in simulation.orcs():
             x, y = orc.position
-            pos = (x * self.cell_size + margin, y * self.cell_size + margin)
+            cell_surface = pygame.Surface((self.cell_size, self.cell_size), pygame.SRCALPHA)
+            if orc.infected:
+                self._draw_infection_overlay(cell_surface)
             sprite = self._sprite_for_orc(orc)
             if sprite is not None:
-                cell_surface = pygame.Surface((self.cell_size, self.cell_size), pygame.SRCALPHA)
                 rect = sprite.get_rect()
                 rect.center = (self.cell_size // 2, self.cell_size // 2)
                 cell_surface.blit(sprite, rect)
-                self.screen.blit(cell_surface, (x * self.cell_size, y * self.cell_size))
             else:
-                rect = pygame.Rect(
-                    pos[0],
-                    pos[1],
-                    self.cell_size - margin * 2,
-                    self.cell_size - margin * 2,
-                )
-                pygame.draw.rect(self.screen, color_for_orc(orc), rect)
+                rect = pygame.Rect(0, 0, self.cell_size, self.cell_size)
+                pygame.draw.rect(cell_surface, color_for_orc(orc), rect)
+            self.screen.blit(cell_surface, (x * self.cell_size, y * self.cell_size))
 
     def _draw_hud(self, simulation: Simulation, paused: bool) -> None:
         metrics = simulation.metrics()
@@ -179,3 +176,11 @@ class PygameRenderer:
         tinted.fill(rgb + (0,), special_flags=pygame.BLEND_RGB_MULT)
         tinted.fill((15, 12, 0, 0), special_flags=pygame.BLEND_RGB_ADD)
         return tinted
+
+    def _draw_infection_overlay(self, surface: pygame.Surface) -> None:
+        radius = max(3, self.cell_size // 2)
+        center = (self.cell_size // 2, self.cell_size // 2)
+        halo = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+        pygame.draw.circle(halo, INFECTION_GLOW, center, radius)
+        # Halo se queda debajo porque luego se dibuja el sprite encima en la misma surface.
+        surface.blit(halo, (0, 0))

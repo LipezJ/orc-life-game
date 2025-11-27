@@ -19,6 +19,8 @@ class SimulationSettings:
     reproduction_threshold: float = 6.0
     reproduction_chance: float = 0.12
     reproduction_energy_share: float = 0.35
+    reproduction_overpop_pop_threshold: int = 200
+    reproduction_overpop_factor: float = 0.5
     mutation_rate: float = 0.15
     mutation_scale: float = 0.25
     humidity_penalty: float = 0.18
@@ -29,6 +31,10 @@ class SimulationSettings:
     aggression_bias: float = 0.45
     herd_radius: int = 3
     herd_attraction: float = 0.55
+    pair_seek_multiplier: float = 1.8
+    escape_strength_threshold: float = 0.95
+    escape_threat_radius: int = 2
+    escape_threat_weight: float = 0.6
     biome_bonus: float = 0.16
     biome_penalty: float = 0.12
     peace_floor_count: int = 4
@@ -39,7 +45,11 @@ class SimulationSettings:
     loner_grit_bonus: float = 0.35
     loner_grit_threshold: int = 3
     support_score_factor: float = 0.12
-    virus_spawn_chance: float = 0.0012
+    virus_spawn_base: float = 0.0002
+    virus_spawn_stressed: float = 0.0012
+    virus_crowd_threshold: int = 6
+    virus_crowd_pop_threshold: int = 150
+    virus_crowd_multiplier: float = 5
     virus_spread_chance: float = 0.04
     virus_duration: int = 30
     virus_energy_penalty: float = 0.6

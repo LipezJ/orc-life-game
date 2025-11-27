@@ -118,7 +118,7 @@ class Simulation:
             orc.adjust_energy(self.settings.loner_grit_bonus)
 
     def _apply_disease(self, orc: Orc) -> None:
-        if not orc.infected and self.rng.random() < self.settings.virus_spawn_chance:
+        if not orc.infected and self.rng.random() < self._virus_spawn_chance(orc):
             orc.infect(self.settings.virus_duration)
         if not orc.infected:
             return
@@ -162,8 +162,18 @@ class Simulation:
         if endangered:
             threshold *= self.settings.endangered_repro_factor
             chance = min(1.0, chance + self.settings.endangered_repro_bonus)
+        # Si la poblacion total es alta, baja la probabilidad.
+        if len(self.population) >= self.settings.reproduction_overpop_pop_threshold:
+            chance *= self.settings.reproduction_overpop_factor
 
         if (orc.energy < threshold) or (self.rng.random() > chance):
+            return False
+        # Requiere al menos un aliado adyacente para reproducirse.
+        ally_adjacent = any(
+            (neighbor := self.environment.get(*coord)) and neighbor.kind == orc.kind
+            for coord in self.environment.occupied_neighbors(*orc.position)
+        )
+        if not ally_adjacent:
             return False
         empties = self.environment.empty_neighbors(*orc.position)
         if not empties:
@@ -279,11 +289,22 @@ class Simulation:
     def _choose_move_target(self, orc: Orc, empties: list[tuple[int, int]]) -> tuple[int, int]:
         current_score = self._env_score(orc.kind, orc.position)
         target_vec = self._seek_habitat_direction(orc, current_score)
+        friends_adjacent = any(
+            (neighbor := self.environment.get(*coord)) and neighbor.kind == orc.kind
+            for coord in self.environment.occupied_neighbors(*orc.position)
+        )
+        low_pop = self._kind_count(orc.kind) <= self.settings.endangered_threshold
+        low_strength = orc.strength <= self.settings.escape_strength_threshold
         weighted: list[tuple[float, tuple[int, int]]] = []
         for coord in empties:
             base = self._env_score(orc.kind, coord)
             herd_bonus = self._herd_bonus(orc, coord)
-            desirability = base + herd_bonus
+            if not friends_adjacent:
+                herd_bonus *= self.settings.pair_seek_multiplier
+            threat_penalty = 0.0
+            if low_pop and low_strength:
+                threat_penalty = self._threat_penalty(orc, coord)
+            desirability = base + herd_bonus - threat_penalty
             if target_vec:
                 vx, vy = target_vec
                 dx, dy = coord[0] - orc.position[0], coord[1] - orc.position[1]
@@ -342,6 +363,18 @@ class Simulation:
         bonus, penalty = self._biome_effect(kind, biome)
         return bonus * 1.0 - penalty * 0.7
 
+    def _virus_spawn_chance(self, orc: Orc) -> float:
+        # Mayor probabilidad cuando esta en un bioma que lo penaliza.
+        biome = self.environment.biome_at(*orc.position)
+        _bonus, penalty = self._biome_effect(orc.kind, biome)
+        base = self.settings.virus_spawn_stressed if penalty > 0 else self.settings.virus_spawn_base
+        # Si hay mucha poblacion y esta rodeado de su clase, aumenta el riesgo.
+        if len(self.population) >= self.settings.virus_crowd_pop_threshold:
+            friends, _ = self._social_counts(orc)
+            if friends >= self.settings.virus_crowd_threshold:
+                base *= self.settings.virus_crowd_multiplier
+        return base
+
     def _env_score(self, kind: int, coord: tuple[int, int]) -> float:
         humidity = self.environment.humidity_at(*coord)
         fertility = self.environment.fertility_at(*coord)
@@ -394,6 +427,21 @@ class Simulation:
         friends, foes = self._social_counts(orc)
         net = friends - foes * 0.6
         return net * self.settings.support_score_factor
+
+    def _threat_penalty(self, orc: Orc, coord: tuple[int, int]) -> float:
+        radius = self.settings.escape_threat_radius
+        if radius <= 0:
+            return 0.0
+        ox, oy = coord
+        enemies = 0
+        for y in range(max(0, oy - radius), min(self.environment.height, oy + radius + 1)):
+            for x in range(max(0, ox - radius), min(self.environment.width, ox + radius + 1)):
+                if x == ox and y == oy:
+                    continue
+                other = self.environment.get(x, y)
+                if other and other.kind != orc.kind:
+                    enemies += 1
+        return enemies * self.settings.escape_threat_weight
 
     def _effective_fitness(self, orc: Orc) -> float:
         fitness = orc.fitness()
